@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-rapp
+  namespace: istio-nonrtric
+spec:
+  selector: { app: demo-rapp }
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-rapp
+  namespace: istio-nonrtric
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: demo-rapp }
+  template:
+    metadata:
+      labels: { app: demo-rapp }
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      containers:
+      - name: app
+        image: python:3.12-alpine
+        command: ["sh","-lc"]
+        args:
+          - |
+            pip install fastapi uvicorn httpx >/dev/null \
+            && python - <<'PY' > /app/rapp.py
+            # (paste the Python from above here if you prefer inline)
+            PY
+            # or mount it via ConfigMap; inline keeps it simple
+            python -c "import shutil,sys;shutil.copyfile('/app/rapp.py','/tmp/rapp.py')" && \
+            uvicorn /tmp/rapp:app --host 0.0.0.0 --port 8080
+        env:
+        - { name: PMS_URL,          value: "http://policy-agent:8081" }
+        - { name: SERVICE_ID,       value: "demo-rapp" }
+        - { name: RIC_ID,           value: "ric2" }          # matches your A1-STD mapping
+        - { name: POLICY_ID,        value: "demo-policy-3" }
+        - { name: POLICY_TYPE_ID,   value: "" }              # empty for this sim
+        - { name: PORT,             value: "8080" }
+        ports: [{ containerPort: 8080 }]
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8080 }
+          initialDelaySeconds: 3
+          periodSeconds: 5

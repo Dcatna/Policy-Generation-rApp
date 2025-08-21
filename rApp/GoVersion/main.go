@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -87,6 +88,126 @@ func main() {
 
 	// HTTP server
 	mux := http.NewServeMux()
+	// --- simple proxy helper to PMS (GET)
+	proxyGET := func(p string, w http.ResponseWriter) {
+		u := pmsURL + p
+		req, _ := http.NewRequest(http.MethodGet, u, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		for k, vv := range resp.Header {
+			for _, v := range vv {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}
+
+	// --- API: list PMS-registered services
+	mux.HandleFunc("/api/services", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		proxyGET("/a1-policy/v2/services", w)
+	})
+
+	// --- API: list policy instances
+	mux.HandleFunc("/api/policies", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			proxyGET("/a1-policy/v2/policy-instances", w)
+		case http.MethodPost:
+			// upsert policy (fields default to env if omitted)
+			var body PolicyBody
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "bad json", 400)
+				return
+			}
+			if body.PolicyID == "" {
+				body.PolicyID = policyID
+			}
+			if body.RicID == "" {
+				body.RicID = ricID
+			}
+			if body.PolicyTypeID == "" {
+				body.PolicyTypeID = ptypeID
+			}
+			if body.ServiceID == "" {
+				body.ServiceID = service
+			}
+			if body.StatusNotificationURI == "" {
+				body.StatusNotificationURI = cbURL
+			}
+			code, err := putJSON(pmsURL+"/a1-policy/v2/policies", body)
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			w.WriteHeader(code)
+			w.Write([]byte(`{}`))
+		default:
+			http.Error(w, "method not allowed", 405)
+		}
+	})
+
+	// --- API: convenience endpoint to set just the "limit" for your current policy
+	mux.HandleFunc("/api/policies/limit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		var in struct {
+			Limit float64 `json:"limit"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			http.Error(w, "bad json", 400)
+			return
+		}
+		policyLimit.Set(in.Limit)
+		pol := PolicyBody{
+			PolicyID:              policyID,
+			RicID:                 ricID,
+			PolicyTypeID:          ptypeID,
+			ServiceID:             service,
+			StatusNotificationURI: cbURL,
+			PolicyData:            map[string]any{"note": "from-ui", "limit": in.Limit},
+		}
+		code, err := putJSON(pmsURL+"/a1-policy/v2/policies", pol)
+		if err != nil {
+			http.Error(w, err.Error(), 502)
+			return
+		}
+		w.WriteHeader(code)
+		w.Write([]byte(`{}`))
+	})
+
+	// --- API: list RICs
+	mux.HandleFunc("/api/rics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		proxyGET("/a1-policy/v2/rics", w)
+	})
+
+	// --- API: list policy-types (optionally filter by ric_id)
+	mux.HandleFunc("/api/policy-types", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		ric := r.URL.Query().Get("ric_id")
+		path := "/a1-policy/v2/policy-types"
+		if ric != "" {
+			path += "?ric_id=" + url.QueryEscape(ric)
+		}
+		proxyGET(path, w)
+	})
 
 	// health
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -188,5 +309,21 @@ func main() {
 
 	addr := ":8080"
 	log.Printf("rApp starting on %s (service=%s ric=%s policy=%s)", addr, service, ricID, policyID)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	allowOrigin := getenv("CORS_ALLOW_ORIGIN", "*") // in dev, "*" is fine
+	cors := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(204)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
+	log.Printf("rApp starting on %s (service=%s ric=%s policy=%s)", addr, service, ricID, policyID)
+	log.Fatal(http.ListenAndServe(addr, cors(mux)))
+
 }

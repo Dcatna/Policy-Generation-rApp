@@ -1,6 +1,5 @@
 import {useEffect, useState} from 'react';
 import {getRicList, getPolicyTypes} from '../data/rapp_functions';
-import type { RicInfo } from '@/data/types';
 
 export function PolicyBuilderButton() {
   const [open, setOpen] = useState(false);
@@ -15,25 +14,26 @@ export function PolicyBuilderButton() {
 }
 
 function PolicyBuilder({onClose}:{onClose:()=>void}) {
-  const [rics, setRics] = useState<string[]>([]);
-  const [ric, setRic] = useState<string>('');
-  const [types, setTypes] = useState<any[]>([]);
-  const [ptype, setPtype] = useState<string>('');
-  const [policyId, setPolicyId] = useState<string>('demo-policy-ui');
-  const [data, setData] = useState<string>('{"note":"from-ui","limit":25}');
-
-  useEffect(()=>{
+  const [rics, setRics] = useState<string[]>([])
+  const [ric, setRic] = useState<string>('')
+  const [types, setTypes] = useState<any[]>([])
+  const [ptype, setPtype] = useState<string>('')
+  const [policyId, setPolicyId] = useState<string>('demo-policy-ui')
+  const [data, setData] = useState<string>('{"note":"from-ui","limit":25}')
+  const BASE = import.meta.env.VITE_RAPP_BASE ?? "";
+useEffect(() => {
+  (async () => {
     setRics([])
     setTypes([])
-    getRicList().then(r=> r.map((ric : RicInfo) => {
-        setRics([...rics, ric.ric_id])
-    }));
-  },[]);
+    const list = await getRicList()
+    setRics(list.map(r => r.ric_id))
+  })().catch(e => console.error(e))
+}, [])
   useEffect(()=>{
-    if (!ric) return setTypes([]);
-    getPolicyTypes(ric).then(setTypes).catch(console.error);
+    if (!ric) return setTypes([])
+    getPolicyTypes(ric).then(setTypes).catch(console.error)
 
-  },[ric]);
+  },[ric])
 
   const submit = async () => {
     try {
@@ -42,18 +42,19 @@ function PolicyBuilder({onClose}:{onClose:()=>void}) {
         ric_id: ric,
         policytype_id: ptype ?? '',
         policy_data: JSON.parse(data),
-      };
-      const res = await fetch('/api/policies', {
+      }
+      const res = await fetch(`${BASE}/api/policies`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      onClose();
+      })
+      console.log(res)
+      if (!res.ok) throw new Error(await res.text())
+      onClose()
     } catch (e:any) {
-      alert(e?.message ?? 'Failed');
+      alert(e?.message ?? 'Failed')
     }
-  };
+  }
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center">

@@ -1,4 +1,4 @@
-import type { ServiceListResp, PolicyInstancesResp, RicInfo } from "./types";
+import type { ServiceListResp, PolicyInstancesResp, RicInfo, RicListResp } from "./types";
 
 const BASE = import.meta.env.VITE_RAPP_BASE ?? "";
 
@@ -13,6 +13,9 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const data = (await res.json()) as T;
+  if (path == "/api/rics") {
+    console.log(data, "RICD")
+  }
   return data;
 }
 
@@ -36,7 +39,10 @@ export async function getPolicyTypes(ric?: string): Promise<string[]> {
   return Array.isArray(raw) ? raw : (raw?.policytype_ids ?? []);
 }
 
-export const getRicList = () => json<RicInfo[]>("/api/rics");
+export const getRicList = async (): Promise<RicInfo[]> => {
+  const raw = await json<RicListResp | RicInfo[]>("/api/rics");
+  return Array.isArray(raw) ? raw : (raw?.rics ?? []);
+};
 
 export const setPolicyLimit = (limit: number) =>
   json<{ ok: boolean }>("/api/policies/limit", {

@@ -24,7 +24,7 @@ export default function Home() {
     }
   };
   console.log(health)
-const ok = health === undefined ? '…' : (health?.ok ? '✅' : '❌');
+  const ok = health === undefined ? '…' : (health?.ok ? '✅' : '❌');
 
   return (
     <div className="p-6 grid gap-6 md:grid-cols-2">

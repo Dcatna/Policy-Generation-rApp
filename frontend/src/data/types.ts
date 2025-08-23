@@ -25,3 +25,5 @@ export interface RicInfo {
     ric_id: string; 
     state?: string; 
 }
+
+export type RicListResp = { rics: RicInfo[] };

@@ -324,6 +324,7 @@ func main() {
 	}
 
 	log.Printf("rApp starting on %s (service=%s ric=%s policy=%s)", addr, service, ricID, policyID)
+
 	log.Fatal(http.ListenAndServe(addr, cors(mux)))
 
 }

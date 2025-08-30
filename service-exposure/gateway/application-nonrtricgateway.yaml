@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: nonrtric-gateway
+  cloud:
+    gateway:
+      routes:
+        # Forward everything under /a1-policy/* to PMS
+        - id: pms
+          uri: http://policy-agent:8081
+          predicates:
+            - Path=/a1-policy/**
+          filters:
+            - StripPrefix=1
+            
+        - id: ics
+          uri: http://ics:8083
+          predicates: [ Path=/ics/** ]
+          filters: [ StripPrefix=1 ]
+
+      httpclient:
+        ssl:
+          useInsecureTrustManager: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    reactor.netty: INFO

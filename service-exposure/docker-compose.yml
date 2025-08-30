@@ -1,0 +1,71 @@
+version: "3.9"
+services:
+  ics:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/nonrtric-plt-informationcoordinatorservice:latest
+    container_name: ics
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m
+    ports: ["8083:8083"]
+    depends_on: []
+    networks: [ nonrtric ]
+
+  my-rapp:
+    image: demo-rapp:latest
+    container_name: my-rapp
+    environment:
+      - GATEWAY_BASE=http://nonrtric-gateway:8080
+    depends_on:
+      - nonrtric-gateway
+    networks:
+      - nonrtric
+    ports:
+      - "8088:8088"
+
+  a1-sim-std:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/a1-simulator:latest
+    container_name: a1-sim-std
+    command: [ "STD_1.1.3" ]
+    ports: ["30001:3000"]
+    networks: [ nonrtric ]
+
+  a1-sim-std-v2:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/a1-simulator:latest
+    container_name: a1-sim-std-v2
+    command: [ "STD_2.0.0" ]
+    ports: ["30003:3000"]
+    networks: [ nonrtric ]
+
+  a1-sim-osc:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/a1-simulator:latest
+    container_name: a1-sim-osc
+    command: [ "OSC_2.1.0" ]
+    ports: ["30005:3000"]
+    networks: [ nonrtric ]
+
+  policy-agent:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/nonrtric-a1-policy-management-service:2.3.1
+    container_name: policy-agent
+    # Mount the PMS configuration
+    volumes:
+      - ./application_configuration.json:/opt/app/policy-agent/data/application_configuration.json:ro
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m
+    ports: ["8081:8081"]
+    depends_on: [ a1-sim-std, a1-sim-std-v2, a1-sim-osc ]
+    networks: [ nonrtric ]
+
+  nonrtric-gateway:
+    image: nexus3.o-ran-sc.org:10002/o-ran-sc/nonrtric-gateway:latest
+    container_name: nonrtric-gateway
+    volumes:
+      # Spring Cloud Gateway config
+      - ./gateway/application-nonrtricgateway.yaml:/config/application-nonrtricgateway.yaml:ro
+    environment:
+      - SPRING_CONFIG_ADDITIONAL_LOCATION=file:/config/
+    ports: ["8080:8080"]
+    depends_on: [ policy-agent ]
+    networks: [ nonrtric ]
+
+networks:
+  nonrtric:
+    driver: bridge
